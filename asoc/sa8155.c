@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
  */
 /*
  * Copyright 2011, The Android Open Source Project
@@ -49,7 +49,6 @@
 #include <dsp/audio_notifier.h>
 #include <dsp/q6afe-v2.h>
 #include <dsp/q6core.h>
-#include <soc/qcom/boot_stats.h>
 #include "device_event.h"
 #include "msm-pcm-routing-v2.h"
 #include "msm_dailink.h"
@@ -309,15 +308,6 @@ static struct dev_config proxy_rx_cfg[] = {
 		.bit_format = SNDRV_PCM_FORMAT_S16_LE,
 		.channels = 2,
 	}
-};
-
-
-static struct dev_config proxy_tx_cfg[] = {
-	{
-		.sample_rate = SAMPLING_RATE_48KHZ,
-		.bit_format = SNDRV_PCM_FORMAT_S16_LE,
-		.channels = 2,
-	},
 };
 
 /* Default configuration of MI2S channels */
@@ -663,7 +653,6 @@ static SOC_ENUM_SINGLE_EXT_DECL(usb_rx_chs, usb_ch_text);
 static SOC_ENUM_SINGLE_EXT_DECL(usb_tx_chs, usb_ch_text);
 static SOC_ENUM_SINGLE_EXT_DECL(ext_disp_rx_chs, ch_text);
 static SOC_ENUM_SINGLE_EXT_DECL(proxy_rx_chs, ch_text);
-static SOC_ENUM_SINGLE_EXT_DECL(proxy_tx_chs, ch_text);
 static SOC_ENUM_SINGLE_EXT_DECL(usb_rx_format, bit_format_text);
 static SOC_ENUM_SINGLE_EXT_DECL(usb_tx_format, bit_format_text);
 static SOC_ENUM_SINGLE_EXT_DECL(ext_disp_rx_format, ext_disp_bit_format_text);
@@ -1341,27 +1330,6 @@ static int proxy_rx_ch_put(struct snd_kcontrol *kcontrol,
 		pr_debug("%s: proxy_rx channels = %d\n",
 			 __func__, proxy_rx_cfg[0].channels);
 	}
-
-	return 1;
-}
-
-static int proxy_tx_ch_get(struct snd_kcontrol *kcontrol,
-			       struct snd_ctl_elem_value *ucontrol)
-{
-	ucontrol->value.integer.value[0] = proxy_tx_cfg[0].channels - 2;
-	pr_debug("%s: proxy_tx channels = %d\n",
-		 __func__, proxy_tx_cfg[0].channels);
-
-	return 0;
-}
-
-
-static int proxy_tx_ch_put(struct snd_kcontrol *kcontrol,
-			       struct snd_ctl_elem_value *ucontrol)
-{
-	proxy_tx_cfg[0].channels = ucontrol->value.integer.value[0] + 2;
-	pr_debug("%s: proxy_tx channels = %d\n",
-		 __func__, proxy_tx_cfg[0].channels);
 
 	return 1;
 }
@@ -2688,8 +2656,6 @@ static const struct snd_kcontrol_new msm_snd_controls[] = {
 			proxy_rx_ch_get, proxy_rx_ch_put),
 	SOC_ENUM_EXT("PROXY_RX1 Channels", proxy_rx_chs,
 			proxy_rx_ch_get, proxy_rx_ch_put),
-	SOC_ENUM_EXT("PROXY_TX Channels", proxy_tx_chs,
-			proxy_tx_ch_get, proxy_tx_ch_put),
 	SOC_ENUM_EXT("USB_AUDIO_RX Format", usb_rx_format,
 			usb_audio_rx_format_get, usb_audio_rx_format_put),
 	SOC_ENUM_EXT("USB_AUDIO_TX Format", usb_tx_format,
@@ -3433,11 +3399,6 @@ static int msm_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 	case MSM_BACKEND_DAI_AFE_PCM_RX1:
 		channels->min = channels->max = proxy_rx_cfg[1].channels;
-		rate->min = rate->max = SAMPLING_RATE_48KHZ;
-		break;
-
-	case MSM_BACKEND_DAI_AFE_PCM_TX:
-		channels->min = channels->max = proxy_tx_cfg[0].channels;
 		rate->min = rate->max = SAMPLING_RATE_48KHZ;
 		break;
 
@@ -5836,13 +5797,6 @@ static struct snd_soc_dai_link msm_auto_fe_dai_links[] = {
 		SND_SOC_DAILINK_REG(multimedia25),
 	},
 	{
-		.name = "MSM AFE-PCM TX1",
-		.stream_name = "AFE-PROXY TX1",
-		.dpcm_capture = 1,
-		.ignore_suspend = 1,
-		SND_SOC_DAILINK_REG(afepcm_tx1),
-	},
-	{
 		.name = MSM_DAILINK_NAME(Media31),
 		.stream_name = "MultiMedia31",
 		.dynamic = 1,
@@ -5905,6 +5859,13 @@ static struct snd_soc_dai_link msm_auto_fe_dai_links[] = {
 		.ignore_pmdown_time = 1,
 		.id = MSM_FRONTEND_DAI_MULTIMEDIA34,
 		SND_SOC_DAILINK_REG(multimedia34),
+	},
+	{
+		.name = "MSM AFE-PCM TX1",
+		.stream_name = "AFE-PROXY TX1",
+		.dpcm_capture = 1,
+		.ignore_suspend = 1,
+		SND_SOC_DAILINK_REG(afepcm_tx1),
 	},
 };
 
@@ -7310,9 +7271,9 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	static int first_probe = 1;
 
 	if (first_probe) {
-		place_marker("M - DRIVER Audio Init");
 		first_probe = 0;
 	}
+	pr_debug("M - DRIVER Audio Init\n");
 
 	if (!pdev->dev.of_node) {
 		dev_err(&pdev->dev, "No platform supplied from device tree\n");
@@ -7392,7 +7353,7 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 		pr_err("%s: Registration with SND event FWK failed ret = %d\n",
 			__func__, ret);
 
-	place_marker("M - DRIVER Audio Ready");
+	pr_debug("M - DRIVER Audio Ready\n");
 	return 0;
 err:
 	msm_release_pinctrl(pdev);
